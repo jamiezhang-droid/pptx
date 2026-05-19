@@ -1,0 +1,32 @@
+{
+  "endpoints": [
+    {
+      "name": "Daily Active Users",
+      "url": "https://api.example.com/metrics/dau",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      },
+      "jsonPath": "data.count"
+    },
+    {
+      "name": "Revenue (Weekly)",
+      "url": "https://api.example.com/metrics/revenue?period=week",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      },
+      "jsonPath": "data.total"
+    },
+    {
+      "name": "Support Tickets Open",
+      "url": "https://api.example.com/tickets/open",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      },
+      "jsonPath": "count"
+    }
+  ],
+  "slackFormat": {
+    "title": "Weekly Metrics Report",
+    "includeDate": true
+  }
+}
