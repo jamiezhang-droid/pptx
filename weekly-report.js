@@ -1,4 +1,5 @@
 const { S3Client, ListObjectsV2Command, GetObjectCommand } = require('@aws-sdk/client-s3');
+const XLSX = require('xlsx');
 
 const BUCKET = 'airdna-prod-reports';
 const PREFIX = 'weekly-gtr/';
@@ -47,34 +48,51 @@ async function downloadFile(key) {
   });
 
   const response = await s3.send(command);
-  const bodyContents = await streamToString(response.Body);
-  return bodyContents;
+  const buffer = await streamToBuffer(response.Body);
+  return buffer;
 }
 
-async function streamToString(stream) {
+async function streamToBuffer(stream) {
   const chunks = [];
   for await (const chunk of stream) {
     chunks.push(chunk);
   }
-  return Buffer.concat(chunks).toString('utf-8');
+  return Buffer.concat(chunks);
+}
+
+function parseXlsx(buffer) {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const data = XLSX.utils.sheet_to_json(sheet);
+  return { sheetName, data, sheetNames: workbook.SheetNames };
 }
 
 async function generateSlackReport(data) {
-  // TODO: Customize this based on your report format
   const date = new Date().toISOString().split('T')[0];
 
   let slack = `*Weekly GTR Report*\n`;
-  slack += `_Generated: ${date}_\n\n`;
+  slack += `_Generated: ${date} | Folder: ${data.folder.split('/').slice(-2, -1)[0]}_\n\n`;
 
-  // Add your metrics here based on the file contents
-  slack += `• *Files processed:* ${data.files.length}\n`;
+  for (const file of data.parsedFiles) {
+    slack += `*${file.fileName}*\n`;
+    slack += `  Sheets: ${file.sheetNames.join(', ')}\n`;
+    slack += `  Rows: ${file.rowCount}\n`;
 
-  for (const file of data.files.slice(0, 5)) { // Show first 5 files
-    slack += `  - \`${file.Key.split('/').pop()}\` (${formatBytes(file.Size)})\n`;
-  }
+    // Show column names
+    if (file.columns.length > 0) {
+      slack += `  Columns: ${file.columns.slice(0, 5).join(', ')}`;
+      if (file.columns.length > 5) {
+        slack += ` (+${file.columns.length - 5} more)`;
+      }
+      slack += `\n`;
+    }
 
-  if (data.files.length > 5) {
-    slack += `  _...and ${data.files.length - 5} more files_\n`;
+    // TODO: Add your custom metrics here
+    // Example: Sum a column, count unique values, etc.
+    // slack += `  Total Revenue: ${sumColumn(file.data, 'revenue')}\n`;
+
+    slack += `\n`;
   }
 
   return slack;
@@ -95,11 +113,31 @@ async function main() {
     const latestFolder = await getLatestWeeklyFolder();
     const files = await listFilesInFolder(latestFolder);
 
-    console.log(`Found ${files.length} files in ${latestFolder}\n`);
+    // Filter for xlsx files only
+    const xlsxFiles = files.filter(f => f.Key.endsWith('.xlsx'));
+    console.log(`Found ${xlsxFiles.length} xlsx files in ${latestFolder}\n`);
+
+    const parsedFiles = [];
+    for (const file of xlsxFiles) {
+      console.log(`Downloading: ${file.Key.split('/').pop()}`);
+      const buffer = await downloadFile(file.Key);
+      const parsed = parseXlsx(buffer);
+
+      parsedFiles.push({
+        fileName: file.Key.split('/').pop(),
+        sheetNames: parsed.sheetNames,
+        data: parsed.data,
+        rowCount: parsed.data.length,
+        columns: parsed.data.length > 0 ? Object.keys(parsed.data[0]) : []
+      });
+    }
+
+    console.log('\n');
 
     const slackMessage = await generateSlackReport({
       folder: latestFolder,
-      files
+      files: xlsxFiles,
+      parsedFiles
     });
 
     console.log('=== SLACK MESSAGE ===\n');
