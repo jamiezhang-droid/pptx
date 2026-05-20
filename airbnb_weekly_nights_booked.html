@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Airbnb Weekly Nights Booked</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f5f6fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.10);
+      padding: 32px 36px 24px;
+      width: 100%;
+      max-width: 1200px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-size: 0.82rem;
+      color: #888;
+      margin-bottom: 20px;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+    .controls label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #555;
+      margin-right: 4px;
+    }
+    .year-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .year-btn {
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 2px solid transparent;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      color: #fff;
+    }
+    .year-btn:hover { opacity: 0.85; transform: scale(1.05); }
+    .year-btn.off { opacity: 0.35; }
+    .chart-wrapper {
+      position: relative;
+      height: 460px;
+    }
+    .tooltip-custom {
+      background: rgba(20,20,30,0.92);
+      color: #fff;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      pointer-events: none;
+      min-width: 180px;
+    }
+    .tooltip-custom .tt-header {
+      font-weight: 700;
+      margin-bottom: 6px;
+      font-size: 0.85rem;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+      padding-bottom: 4px;
+    }
+    .tooltip-custom .tt-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 3px;
+    }
+    .tooltip-custom .tt-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+    .stat-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid #eee;
+    }
+    .stat-box {
+      flex: 1 1 140px;
+      background: #f8f9fb;
+      border-radius: 8px;
+      padding: 10px 14px;
+      text-align: center;
+    }
+    .stat-box .stat-label { font-size: 0.72rem; color: #888; margin-bottom: 3px; }
+    .stat-box .stat-val { font-size: 1.1rem; font-weight: 700; color: #1a1a2e; }
+    .stat-box .stat-sub { font-size: 0.72rem; color: #aaa; margin-top: 1px; }
+    .last-week-note {
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 8px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Airbnb Weekly Nights Booked</h1>
+  <div class="subtitle">Global weekly nights booked on Airbnb &mdash; week-of-year comparison across years</div>
+
+  <div class="controls">
+    <label>Toggle years:</label>
+    <div class="year-toggle" id="yearToggle"></div>
+  </div>
+
+  <div class="chart-wrapper">
+    <canvas id="mainChart"></canvas>
+  </div>
+
+  <div class="stat-row" id="statsRow"></div>
+  <div class="last-week-note">Dashed line marks Week 20 &mdash; last week with 2026 reported data</div>
+</div>
+
+<script>
+const LAST_WEEK = 20;
+
+const WEEKS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52];
+
+const RAW = {
+  "2019": [12851729,11971129,11082316,11505907,11402271,11337605,10478475,12909795,12344011,14533476,11642761,11215219,11430987,11943479,11543167,10103205,10544656,12050747,11340140,11124829,11570988,11631778,11762903,11979609,12180942,11717868,11446410,11935112,11741653,10774328,11612890,11997462,11899763,12583440,12420446,11648070,13471959,9217343,10998685,12317192,12776411,12656980,11442998,13189350,11200798,11191407,10632284,11012916,10365111,9706874,8436503,11465478],
+  "2020": [14946850,14067661,13205882,14690889,14418060,14862533,12497224,11930963,8748596,6830001,8740110,7814736,7831394,4715587,4501175,5410223,6864964,6327617,7051720,8311929,9544420,11860301,11359246,11640016,12172188,13583921,11029322,11705133,11407815,12068268,11003237,10200970,10994016,10899979,13194444,10429929,10051428,10159811,10250608,9063864,8731244,8899899,8643040,8713405,7682324,7406043,6137314,6541955,8975014,8008814,7066276,9034763],
+  "2021": [10934124,9700386,9302288,9396780,10801767,9302202,10089246,10983418,12385090,11835889,11780915,9449354,13167984,11484417,11022117,11110165,11539614,13679222,12192795,12355939,13163917,14130934,14663102,13202114,13405513,14600000,13674519,11362800,11663666,11545599,12588457,12329302,11336308,12138326,12897612,13528380,12351047,12036379,12343576,12703022,11760202,11843632,10980712,11858907,11217123,10700137,9449101,10141381,9681579,8900896,7341408,9255040],
+  "2022": [14207316,13851119,13679953,13480653,14408389,14293985,13419092,14542920,15464375,14557115,14163708,14450723,13648888,14605701,14292764,12428093,15371419,12686837,14460723,14077873,14488933,13550327,14599081,12232592,12820113,13481557,14015740,12966806,12012760,13257626,14980885,13790180,12935584,14055896,15146161,14134303,14202360,11285976,14151179,13993336,11677368,14106392,12145742,13628536,11742420,11083543,11600191,12627209,10837664,12032716,10551108,7886865],
+  "2023": [15719077,17779921,17162150,15412779,16300222,18004903,13415756,14851710,17598348,15622147,16159691,16738302,15494001,16030516,15190666,15253641,14634645,16077156,15749014,14705954,14410207,14932985,18548383,16242601,16556962,16806338,17189999,16762772,15457033,16605669,16713390,17205489,15406413,15421745,16670956,16743909,16207935,15787724,14945079,16860258,15539040,14342102,14254586,14184282,14854197,14486507,14357675,16002360,15493845,12560017,13098235,11373824],
+  "2024": [15938851,18597781,17738172,19331053,17626223,18266974,17064293,17394954,19212458,18183323,18199763,17273671,16920324,16746355,17286154,16188076,16280214,16815974,17444745,17791845,17013557,18674641,17654847,17853843,17348545,17171515,19674890,18450359,17304125,17207162,19627414,17575748,16651505,16887429,17028000,20193221,17743464,16762346,16673458,18848459,16907674,16151801,15749092,16816716,15963824,16046305,15513281,14870859,17098408,14876431,14379419,12605283],
+  "2025": [18826143,21761735,21218327,20140470,21054923,20322891,19563280,19228537,20508626,20640391,20286226,19110246,19551526,20315572,18766542,17704280,17166845,19112625,18151407,18099355,17970493,18459426,20788575,19123545,18321117,18456636,20622485,19588817,18945914,18483148,20718150,18596080,17889964,17894209,18268812,21255343,18075970,17426376,16938702,18876351,17692437,16791988,16300217,17092389,17092452,16651320,16084252,15461908,17554840,15535684,14859344,13212993],
+  "2026": [18131107,22255696,22568585,21489386,21079980,22487506,20133307,19892362,21088500,22749563,21329219,20313193,19868769,20464614,19299107,19671039,19038975,19484328,19348139,19094978,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]
+};
+
+const YEAR_COLORS = {
+  "2019": "#2e7d32",
+  "2020": "#1565c0",
+  "2021": "#e65100",
+  "2022": "#c62828",
+  "2023": "#f9a825",
+  "2024": "#00838f",
+  "2025": "#1a237e",
+  "2026": "#6d4c41"
+};
+
+const YEARS = Object.keys(RAW);
+const visibility = Object.fromEntries(YEARS.map(y => [y, true]));
+
+function fmtM(v) {
+  if (v == null) return '—';
+  return (v / 1e6).toFixed(1) + 'M';
+}
+
+function buildDatasets() {
+  return YEARS.map(year => {
+    const is2026 = year === "2026";
+    return {
+      label: year,
+      data: RAW[year],
+      borderColor: YEAR_COLORS[year],
+      backgroundColor: YEAR_COLORS[year],
+      borderWidth: is2026 ? 2.5 : 1.8,
+      pointRadius: is2026 ? 4 : 0,
+      pointHoverRadius: 5,
+      pointBackgroundColor: YEAR_COLORS[year],
+      tension: 0.3,
+      hidden: !visibility[year],
+      spanGaps: false,
+    };
+  });
+}
+
+const verticalLinePlugin = {
+  id: 'verticalLine',
+  afterDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    const xPos = xScale.getPixelForValue(LAST_WEEK - 1); // 0-indexed
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1.5;
+    ctx.moveTo(xPos, chartArea.top);
+    ctx.lineTo(xPos, chartArea.bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#666';
+    ctx.font = '11px Segoe UI, Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(LAST_WEEK), xPos, chartArea.bottom + 16);
+    ctx.restore();
+  }
+};
+
+const ctx = document.getElementById('mainChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: WEEKS,
+    datasets: buildDatasets()
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        position: 'top',
+        align: 'end',
+        labels: {
+          boxWidth: 20,
+          boxHeight: 2,
+          padding: 12,
+          font: { size: 11, weight: '700' },
+          usePointStyle: false,
+        }
+      },
+      tooltip: {
+        enabled: false,
+        external: externalTooltip
+      }
+    },
+    scales: {
+      x: {
+        title: { display: true, text: 'Week of Year', font: { size: 11 }, color: '#888' },
+        ticks: {
+          font: { size: 10 },
+          color: '#666',
+          maxTicksLimit: 52,
+          callback: (val, idx) => WEEKS[idx]
+        },
+        grid: { display: false }
+      },
+      y: {
+        title: { display: false },
+        ticks: {
+          font: { size: 10 },
+          color: '#666',
+          callback: v => (v / 1e6).toFixed(1) + 'M'
+        },
+        grid: { color: 'rgba(0,0,0,0.06)' },
+        beginAtZero: false
+      }
+    },
+    animation: { duration: 250 }
+  },
+  plugins: [verticalLinePlugin]
+});
+
+// Custom tooltip
+let tooltipEl = null;
+function externalTooltip({ chart, tooltip }) {
+  if (!tooltipEl) {
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'tooltip-custom';
+    document.body.appendChild(tooltipEl);
+  }
+  if (tooltip.opacity === 0) {
+    tooltipEl.style.opacity = '0';
+    return;
+  }
+
+  const week = tooltip.dataPoints[0].label;
+  const rows = tooltip.dataPoints
+    .filter(p => p.raw != null)
+    .sort((a, b) => b.raw - a.raw)
+    .map(p => {
+      const color = YEAR_COLORS[p.dataset.label];
+      return `<div class="tt-row">
+        <span><span class="tt-dot" style="background:${color}"></span>${p.dataset.label}</span>
+        <span style="font-weight:700">${fmtM(p.raw)}</span>
+      </div>`;
+    }).join('');
+
+  tooltipEl.innerHTML = `<div class="tt-header">Week ${week}</div>${rows}`;
+  tooltipEl.style.opacity = '1';
+
+  const pos = chart.canvas.getBoundingClientRect();
+  const x = pos.left + window.scrollX + tooltip.caretX + 14;
+  const y = pos.top + window.scrollY + tooltip.caretY - 20;
+  tooltipEl.style.position = 'absolute';
+  tooltipEl.style.left = (x + tooltipEl.offsetWidth > window.innerWidth - 20
+    ? pos.left + window.scrollX + tooltip.caretX - tooltipEl.offsetWidth - 14
+    : x) + 'px';
+  tooltipEl.style.top = y + 'px';
+}
+
+// Year toggle buttons
+const toggleDiv = document.getElementById('yearToggle');
+YEARS.forEach(year => {
+  const btn = document.createElement('button');
+  btn.className = 'year-btn';
+  btn.textContent = year;
+  btn.style.background = YEAR_COLORS[year];
+  btn.style.borderColor = YEAR_COLORS[year];
+  btn.dataset.year = year;
+  btn.addEventListener('click', () => {
+    visibility[year] = !visibility[year];
+    btn.classList.toggle('off', !visibility[year]);
+    const ds = chart.data.datasets.find(d => d.label === year);
+    if (ds) {
+      ds.hidden = !visibility[year];
+      chart.update();
+      updateStats();
+    }
+  });
+  toggleDiv.appendChild(btn);
+});
+
+// Stats row: show week 20 values for each visible year
+function updateStats() {
+  const statsRow = document.getElementById('statsRow');
+  const w20idx = LAST_WEEK - 1;
+
+  // YoY for 2026 vs 2025 at last week
+  const v26 = RAW['2026'][w20idx];
+  const v25 = RAW['2025'][w20idx];
+  const yoy = v26 != null && v25 != null ? ((v26 - v25) / v25 * 100) : null;
+
+  // Build stats
+  const statsHtml = `
+    <div class="stat-box">
+      <div class="stat-label">2026 Week ${LAST_WEEK}</div>
+      <div class="stat-val">${fmtM(v26)}</div>
+      <div class="stat-sub">nights booked</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">2025 Week ${LAST_WEEK}</div>
+      <div class="stat-val">${fmtM(v25)}</div>
+      <div class="stat-sub">nights booked</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">YoY 2026 vs 2025</div>
+      <div class="stat-val" style="color:${yoy >= 0 ? '#2e7d32' : '#c62828'}">${yoy != null ? (yoy >= 0 ? '+' : '') + yoy.toFixed(1) + '%' : '—'}</div>
+      <div class="stat-sub">at Week ${LAST_WEEK}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">2026 YTD Peak</div>
+      <div class="stat-val">${fmtM(Math.max(...RAW['2026'].filter(v => v != null)))}</div>
+      <div class="stat-sub">Week ${RAW['2026'].indexOf(Math.max(...RAW['2026'].filter(v => v != null))) + 1}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">2025 Annual Peak</div>
+      <div class="stat-val">${fmtM(Math.max(...RAW['2025'].filter(v => v != null)))}</div>
+      <div class="stat-sub">Week ${RAW['2025'].indexOf(Math.max(...RAW['2025'].filter(v => v != null))) + 1}</div>
+    </div>
+  `;
+  statsRow.innerHTML = statsHtml;
+}
+
+updateStats();
+</script>
+</body>
+</html>
